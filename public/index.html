@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agar.io Clone</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #f2fbff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        canvas { display: block; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        
+        /* Main Menu / Login Panel */
+        #login-panel {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+            pointer-events: auto; z-index: 1000;
+        }
+        .menu-box {
+            background: rgba(255, 255, 255, 0.95); padding: 30px; border-radius: 10px; text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 320px;
+        }
+        .menu-box h1 { margin-top: 0; color: #333; font-size: 32px; }
+        .menu-box input[type="text"] {
+            width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px;
+            font-size: 16px; text-align: center;
+        }
+        .btn {
+            width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 5px;
+            font-size: 18px; font-weight: bold; cursor: pointer; color: white;
+            transition: 0.2s;
+        }
+        #play-btn { background: #4CAF50; }
+        #play-btn:hover { background: #45a049; }
+        #spectate-btn { background: #2196F3; }
+        #spectate-btn:hover { background: #1e88e5; }
+        
+        /* Stats & Settings */
+        .level-bar { background: #ddd; border-radius: 10px; margin: 10px 0; height: 10px; overflow: hidden; }
+        .level-progress { background: #FFC107; height: 100%; width: 0%; transition: 0.3s; }
+        .settings-toggles { text-align: left; margin: 15px 0; font-size: 14px; color: #555; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 5px; }
+        .settings-toggles label { display: block; margin: 2px 0; }
+
+        /* Minimap */
+        #minimap-container {
+            display: none;
+        }
+
+        /* Leaderboard & Chat */
+        #leaderboard { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; font-weight: bold; pointer-events: none; min-width: 150px; }
+        #leaderboard h3 { margin: 0 0 5px 0; text-align: center; }
+        #leaderboard-list { margin: 0; padding-left: 20px; }
+        #leaderboard-list li { font-size: 14px; margin: 2px 0; white-space: nowrap; }
+        
+        #chat-container { position: absolute; bottom: 20px; left: 20px; width: 300px; pointer-events: auto; }
+        #chat-messages { max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.7); border-radius: 5px 5px 0 0; padding: 5px; display: none; font-size: 14px; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
+        #chat-input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid #ccc; border-radius: 5px; background: rgba(255,255,255,0.9); }
+        
+        /* Mobile Controls */
+        #mobile-controls {
+            display: none; position: absolute; bottom: 20px; left: 20px; right: 20px;
+            pointer-events: none; z-index: 100;
+        }
+        .joystick-zone { width: 150px; height: 150px; background: rgba(0,0,0,0.1); border: 2px solid rgba(0,0,0,0.2); border-radius: 50%; position: relative; pointer-events: auto; touch-action: none; }
+        .joystick-knob { width: 50px; height: 50px; background: rgba(255,255,255,0.8); border-radius: 50%; position: absolute; top: 50px; left: 50px; pointer-events: none; }
+        
+        .action-buttons { display: flex; flex-direction: column; gap: 15px; pointer-events: auto; position: absolute; right: 0; bottom: 0;}
+        .action-btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 0, 0, 0.3); border: 2px solid rgba(255, 255, 255, 0.5); color: white; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; user-select: none; touch-action: none; }
+        .action-btn:active { background: rgba(255, 255, 255, 0.5); }
+
+        #game-over { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; text-align: center; z-index: 2000; pointer-events: auto; }
+
+        @media (max-width: 800px) {
+            #mobile-controls { display: block; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <!-- Main Menu -->
+    <div id="login-panel">
+        <div class="menu-box">
+            <h1>Agar.io Clone</h1>
+            <div id="level-display" style="font-weight: bold; color: #4CAF50;">Level 1</div>
+            <div class="level-bar"><div class="level-progress" id="level-progress"></div></div>
+            <input type="text" id="username" placeholder="Nickname" maxlength="15">
+            <select id="modeInput" style="width: 100%; padding: 10px; margin-bottom: 20px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px;">
+                <option value="FFA">Mode: FFA</option>
+                <option value="Fast Merge">Mode: Fast Merge</option>
+            </select>
+            <button class="btn" id="play-btn">Play</button>
+            <button class="btn" id="spectate-btn">Spectate</button>
+            <div class="settings-toggles">
+                <label><input type="checkbox" id="setting-dark"> Dark Theme</label>
+                <label><input type="checkbox" id="setting-names" checked> Show Names</label>
+                <label><input type="checkbox" id="setting-mass" checked> Show Mass</label>
+                <label><input type="checkbox" id="setting-chat" checked> Enable Chat</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Minimap removed -->
+
+    <div id="ui-layer">
+        <div id="leaderboard">
+            <h3>Leaderboard</h3>
+            <ol id="leaderboard-list"></ol>
+        </div>
+        
+        <div id="chat-container">
+            <div id="chat-messages"></div>
+            <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="50">
+        </div>
+
+        <div id="mobile-controls">
+            <div id="joystick" class="joystick-zone"><div id="joystick-knob" class="joystick-knob"></div></div>
+            <div class="action-buttons">
+                <div id="btn-split" class="action-btn">SPLIT</div>
+                <div id="btn-eject" class="action-btn">SHOOT</div>
+            </div>
+        </div>
+        
+        <div id="game-over">
+            <h2>You Died!</h2>
+            <p id="death-stats" style="margin-bottom: 20px; font-size: 18px; color: #FFD700;"></p>
+            <button class="btn" onclick="document.getElementById('game-over').style.display='none'; document.getElementById('login-panel').style.display='flex';">Continue</button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
