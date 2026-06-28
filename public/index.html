@@ -4,73 +4,100 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agar.io Clone</title>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #f2fbff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; user-select: none; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #f2fbff; font-family: 'Ubuntu', sans-serif; user-select: none; }
         canvas { display: block; }
         #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
         
         /* Main Menu / Login Panel */
         #login-panel {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
+            background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
             pointer-events: auto; z-index: 1000;
         }
         .menu-box {
-            background: rgba(255, 255, 255, 0.95); padding: 30px; border-radius: 10px; text-align: center;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 320px;
+            background: #ffffff; padding: 30px; border-radius: 5px; text-align: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3); width: 320px; color: #333;
         }
-        .menu-box h1 { margin-top: 0; color: #333; font-size: 32px; }
+        .menu-box h1 { margin-top: 0; font-size: 36px; color: #333; margin-bottom: 5px; }
         .menu-box input[type="text"] {
-            width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px;
-            font-size: 16px; text-align: center;
+            width: 90%; padding: 10px; margin: 15px 0; border: 1px solid #ccc; border-radius: 3px;
+            font-size: 16px; text-align: center; font-family: 'Ubuntu', sans-serif; outline: none;
         }
+        .menu-box input[type="text"]:focus { border-color: #007bff; }
+        
+        select {
+            width: 97%; padding: 10px; margin-bottom: 15px; font-size: 16px; border-radius: 3px;
+            border: 1px solid #ccc; font-family: 'Ubuntu', sans-serif; outline: none; background: white;
+        }
+        
         .btn {
-            width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 5px;
-            font-size: 18px; font-weight: bold; cursor: pointer; color: white;
-            transition: 0.2s;
+            width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 3px;
+            font-size: 18px; font-weight: bold; cursor: pointer; color: white; font-family: 'Ubuntu', sans-serif;
+            transition: 0.1s;
         }
-        #play-btn { background: #4CAF50; }
-        #play-btn:hover { background: #45a049; }
-        #spectate-btn { background: #2196F3; }
-        #spectate-btn:hover { background: #1e88e5; }
+        #play-btn { background: #5cb85c; }
+        #play-btn:hover { background: #4cae4c; }
+        #spectate-btn { background: #5bc0de; }
+        #spectate-btn:hover { background: #46b8da; }
         
         /* Stats & Settings */
-        .level-bar { background: #ddd; border-radius: 10px; margin: 10px 0; height: 10px; overflow: hidden; }
-        .level-progress { background: #FFC107; height: 100%; width: 0%; transition: 0.3s; }
-        .settings-toggles { text-align: left; margin: 15px 0; font-size: 14px; color: #555; background: rgba(0,0,0,0.05); padding: 10px; border-radius: 5px; }
-        .settings-toggles label { display: block; margin: 2px 0; }
-
-        /* Minimap */
-        #minimap-container {
-            display: none;
-        }
-
-        /* Leaderboard & Chat */
-        #leaderboard { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 5px; font-weight: bold; pointer-events: none; min-width: 150px; }
-        #leaderboard h3 { margin: 0 0 5px 0; text-align: center; }
-        #leaderboard-list { margin: 0; padding-left: 20px; }
-        #leaderboard-list li { font-size: 14px; margin: 2px 0; white-space: nowrap; }
+        .level-bar { background: #eee; border-radius: 3px; margin: 10px 0; height: 10px; overflow: hidden; }
+        .level-progress { background: #f0ad4e; height: 100%; width: 0%; transition: width 0.3s; }
+        #level-display { font-size: 16px; color: #333; font-weight: bold; }
         
-        #chat-container { position: absolute; bottom: 20px; left: 20px; width: 300px; pointer-events: auto; }
-        #chat-messages { max-height: 150px; overflow-y: auto; background: rgba(255,255,255,0.7); border-radius: 5px 5px 0 0; padding: 5px; display: none; font-size: 14px; text-shadow: 1px 1px 2px rgba(255,255,255,0.8); }
-        #chat-input { width: 100%; box-sizing: border-box; padding: 5px; border: 1px solid #ccc; border-radius: 5px; background: rgba(255,255,255,0.9); }
+        .settings-toggles { text-align: left; margin: 15px 0 0; font-size: 14px; padding: 10px; background: #f9f9f9; border-radius: 3px; border: 1px solid #ddd; }
+        .settings-toggles label { display: block; margin: 4px 0; cursor: pointer; }
+
+        /* HUD & Leaderboard */
+        #hud-top-left { position: absolute; top: 15px; left: 15px; color: white; font-size: 20px; font-weight: bold; -webkit-text-stroke: 1px black; }
+        #score-display { font-size: 28px; margin-bottom: 5px; }
+        #coords-display { font-size: 16px; color: #fff; }
+
+        #leaderboard { 
+            position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.3);
+            padding: 10px; border-radius: 5px; color: white; min-width: 160px; font-size: 14px;
+        }
+        #leaderboard h3 { margin: 0 0 5px 0; text-align: center; font-size: 16px; color: white; }
+        #leaderboard-list { margin: 0; padding: 0; list-style: none; }
+        #leaderboard-list li { margin: 2px 0; display: flex; justify-content: flex-start; }
+        .lb-rank { margin-right: 8px; font-weight: bold; }
+        .lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+        .lb-score { font-weight: bold; margin-left: 5px; }
+        .lb-me { color: #f0ad4e; font-weight: bold; }
+        
+        #chat-container { position: absolute; bottom: 20px; left: 20px; width: 300px; pointer-events: auto; display: flex; flex-direction: column; justify-content: flex-end; }
+        #chat-messages { 
+            max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 5px; 
+            padding: 5px; display: none; color: white; font-size: 14px; margin-bottom: 5px;
+            -ms-overflow-style: none; scrollbar-width: none;
+        }
+        #chat-messages::-webkit-scrollbar { display: none; }
+        
+        .chat-msg { margin: 2px 0; }
+        .chat-name { font-weight: bold; }
+        #chat-input { 
+            width: 100%; box-sizing: border-box; padding: 8px; border: none; border-radius: 5px; 
+            font-family: 'Ubuntu', sans-serif; outline: none; background: rgba(0,0,0,0.3); color: white;
+        }
         
         /* Mobile Controls */
-        #mobile-controls {
-            display: none; position: absolute; bottom: 20px; left: 20px; right: 20px;
-            pointer-events: none; z-index: 100;
-        }
-        .joystick-zone { width: 150px; height: 150px; background: rgba(0,0,0,0.1); border: 2px solid rgba(0,0,0,0.2); border-radius: 50%; position: relative; pointer-events: auto; touch-action: none; }
-        .joystick-knob { width: 50px; height: 50px; background: rgba(255,255,255,0.8); border-radius: 50%; position: absolute; top: 50px; left: 50px; pointer-events: none; }
+        #mobile-controls { display: none; position: absolute; bottom: 20px; left: 20px; right: 20px; pointer-events: none; z-index: 100; }
+        .joystick-zone { width: 120px; height: 120px; background: rgba(0,0,0,0.1); border: 2px solid rgba(0,0,0,0.2); border-radius: 50%; position: relative; pointer-events: auto; touch-action: none; }
+        .joystick-knob { width: 40px; height: 40px; background: rgba(0,0,0,0.3); border-radius: 50%; position: absolute; top: 40px; left: 40px; pointer-events: none; }
         
-        .action-buttons { display: flex; flex-direction: column; gap: 15px; pointer-events: auto; position: absolute; right: 0; bottom: 0;}
-        .action-btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 0, 0, 0.3); border: 2px solid rgba(255, 255, 255, 0.5); color: white; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; user-select: none; touch-action: none; }
-        .action-btn:active { background: rgba(255, 255, 255, 0.5); }
+        .action-buttons { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; position: absolute; right: 0; bottom: 0;}
+        .action-btn { width: 60px; height: 60px; border-radius: 50%; background: rgba(0,0,0,0.3); border: 2px solid rgba(0,0,0,0.5); color: white; font-weight: bold; font-size: 14px; display: flex; justify-content: center; align-items: center; user-select: none; touch-action: none; }
+        .action-btn:active { background: rgba(0,0,0,0.5); }
 
-        #game-over { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; text-align: center; z-index: 2000; pointer-events: auto; }
+        #game-over { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 30px; border-radius: 5px; text-align: center; z-index: 2000; pointer-events: auto; }
+        #game-over h2 { margin-top: 0; }
 
         @media (max-width: 800px) {
             #mobile-controls { display: block; }
+            #chat-container { bottom: 180px; left: 10px; width: 250px; }
+            #leaderboard { top: 10px; right: 10px; min-width: 140px; }
         }
     </style>
 </head>
@@ -80,18 +107,18 @@
     <!-- Main Menu -->
     <div id="login-panel">
         <div class="menu-box">
-            <h1>Agar.io Clone</h1>
-            <div id="level-display" style="font-weight: bold; color: #4CAF50;">Level 1</div>
+            <h1>AGAR.IO</h1>
+            <div id="level-display">Level 1</div>
             <div class="level-bar"><div class="level-progress" id="level-progress"></div></div>
             <input type="text" id="username" placeholder="Nickname" maxlength="15">
-            <select id="modeInput" style="width: 100%; padding: 10px; margin-bottom: 20px; font-size: 16px; border: 1px solid #ccc; border-radius: 5px;">
-                <option value="FFA">Mode: FFA</option>
+            <select id="modeInput">
+                <option value="FFA">Mode: Free For All</option>
                 <option value="Fast Merge">Mode: Fast Merge</option>
             </select>
             <button class="btn" id="play-btn">Play</button>
             <button class="btn" id="spectate-btn">Spectate</button>
             <div class="settings-toggles">
-                <label><input type="checkbox" id="setting-dark"> Dark Theme</label>
+                <label><input type="checkbox" id="setting-dark" checked> Dark Theme</label>
                 <label><input type="checkbox" id="setting-names" checked> Show Names</label>
                 <label><input type="checkbox" id="setting-mass" checked> Show Mass</label>
                 <label><input type="checkbox" id="setting-chat" checked> Enable Chat</label>
@@ -99,12 +126,15 @@
         </div>
     </div>
 
-    <!-- Minimap removed -->
-
     <div id="ui-layer">
+        <div id="hud-top-left">
+            <div id="score-display">0</div>
+            <div id="coords-display">Sector A1</div>
+        </div>
+
         <div id="leaderboard">
-            <h3>Leaderboard</h3>
-            <ol id="leaderboard-list"></ol>
+            <h3>Top Players</h3>
+            <ul id="leaderboard-list"></ul>
         </div>
         
         <div id="chat-container">
@@ -122,8 +152,8 @@
         
         <div id="game-over">
             <h2>You Died!</h2>
-            <p id="death-stats" style="margin-bottom: 20px; font-size: 18px; color: #FFD700;"></p>
-            <button class="btn" onclick="document.getElementById('game-over').style.display='none'; document.getElementById('login-panel').style.display='flex';">Continue</button>
+            <p id="death-stats" style="margin-bottom: 25px; font-size: 20px; color: #f5af19;"></p>
+            <button class="btn" id="play-btn" onclick="document.getElementById('game-over').style.display='none'; document.getElementById('login-panel').style.display='flex';">Continue</button>
         </div>
     </div>
 

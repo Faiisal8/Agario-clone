@@ -38,7 +38,7 @@ class Game {
     }
 
     addPlayer(id, name) {
-        this.players[id] = { id, name, targetX: config.WORLD_WIDTH / 2, targetY: config.WORLD_HEIGHT / 2 };
+        this.players[id] = { id, name, targetX: config.WORLD_WIDTH / 2, targetY: config.WORLD_HEIGHT / 2, stats: { foodEaten: 0, cellsEaten: 0, spawnTime: Date.now() } };
         this.cells.push({
             id: this.nextCellId++,
             ownerId: id,
@@ -56,7 +56,7 @@ class Game {
         let personalities = ['Aggressive', 'Timid', 'Scavenger'];
         let personality = personalities[Math.floor(Math.random() * personalities.length)];
         
-        this.players[id] = { id, name, targetX: 0, targetY: 0, isBot: true, personality: personality };
+        this.players[id] = { id, name, targetX: 0, targetY: 0, isBot: true, personality: personality, stats: { foodEaten: 0, cellsEaten: 0, spawnTime: Date.now() } };
         this.cells.push({
             id: this.nextCellId++,
             ownerId: id,
@@ -272,8 +272,8 @@ class Game {
                     }
                 } else {
                     if (dist < Math.max(c1.r, c2.r)) {
-                        if (c1.r > c2.r * 1.1) { this.burstFood(c2); cellsToKill.add(c2.id); c1.r = getRadius(getArea(c1.r) + getArea(c2.r)); }
-                        else if (c2.r > c1.r * 1.1) { this.burstFood(c1); cellsToKill.add(c1.id); c2.r = getRadius(getArea(c2.r) + getArea(c1.r)); }
+                        if (c1.r > c2.r * 1.1) { this.burstFood(c2); cellsToKill.add(c2.id); c1.r = getRadius(getArea(c1.r) + getArea(c2.r)); if(this.players[c1.ownerId]) this.players[c1.ownerId].stats.cellsEaten++; }
+                        else if (c2.r > c1.r * 1.1) { this.burstFood(c1); cellsToKill.add(c1.id); c2.r = getRadius(getArea(c2.r) + getArea(c1.r)); if(this.players[c2.ownerId]) this.players[c2.ownerId].stats.cellsEaten++; }
                     }
                 }
             }
@@ -295,6 +295,7 @@ class Game {
                     c.r = getRadius(getArea(c.r) + getArea(f.r) * foodGrowth);
                     f.eaten = true;
                     foodEaten.push(f.id);
+                    if(this.players[c.ownerId]) this.players[c.ownerId].stats.foodEaten++;
                 }
             }
         }
@@ -403,7 +404,12 @@ class Game {
             let myCells = this.cells.filter(c => c.ownerId === id);
             if (myCells.length === 0) {
                 if (this.players[id].isBot) delete this.players[id];
-                else { this.io.to(id).emit('died'); delete this.players[id]; }
+                else { 
+                    this.players[id].stats.timeAlive = Math.floor((Date.now() - this.players[id].stats.spawnTime) / 1000);
+                    this.players[id].stats.maxScore = this.players[id].maxScore || 0;
+                    this.io.to(id).emit('died', this.players[id].stats); 
+                    delete this.players[id]; 
+                }
             } else {
                 let score = 0;
                 for (let c of myCells) score += getArea(c.r);

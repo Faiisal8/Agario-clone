@@ -157,6 +157,9 @@ chatInput.addEventListener('blur', () => {
     }, 5000);
 });
 
+let isEjecting = false;
+let ejectInterval = null;
+
 window.addEventListener('keydown', (e) => {
     if (e.code === 'Enter') {
         if (document.activeElement === chatInput) {
@@ -175,7 +178,22 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
         socket.emit('split');
     } else if (e.code === 'KeyW') {
-        socket.emit('eject');
+        if (!isEjecting) {
+            isEjecting = true;
+            socket.emit('eject'); // emit instantly once
+            ejectInterval = setInterval(() => {
+                if (isPlaying && isEjecting) {
+                    socket.emit('eject');
+                }
+            }, 60); // Roughly 16 times a second, safely under the 25 limit
+        }
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyW') {
+        isEjecting = false;
+        clearInterval(ejectInterval);
     }
 });
 
@@ -277,8 +295,19 @@ socket.on('update', (data) => {
     viruses = newViruses;
 
     if (myId && players[myId]) {
-        let scoreEl = document.getElementById('score');
-        if (scoreEl) scoreEl.innerText = players[myId].score;
+        let scoreDisplay = document.getElementById('score-display');
+        if (scoreDisplay) scoreDisplay.innerText = players[myId].score;
+        
+        let coordsDisplay = document.getElementById('coords-display');
+        if (coordsDisplay) {
+            let letters = ['A','B','C','D','E','F', 'G', 'H'];
+            // 6000 world width, 1000 per sector (roughly)
+            let sx = Math.floor(camX / (6000/letters.length));
+            let sy = Math.floor(camY / (6000/letters.length));
+            sx = Math.max(0, Math.min(letters.length - 1, sx));
+            sy = Math.max(0, Math.min(letters.length - 1, sy));
+            coordsDisplay.innerText = `Sector ${letters[sy]}${sx + 1}`;
+        }
     }
     
     let sortedPlayers = Object.entries(players).map(([id, p]) => ({ id, ...p })).sort((a, b) => b.score - a.score);
@@ -288,14 +317,13 @@ socket.on('update', (data) => {
     for (let i = 0; i < sortedPlayers.length; i++) {
         let p = sortedPlayers[i];
         let name = p.name || 'Unnamed';
-        let prefix = p.level ? `[Lv ${p.level}] ` : '';
         let isMe = (p.id === myId);
         
         if (isMe) foundSelf = true;
         
         if (i < 10) {
-            let style = isMe ? 'color: #ffeb3b; font-weight: bold;' : '';
-            lbHTML += `<li style="${style}">${i + 1}. ${prefix}${name} - ${p.score}</li>`;
+            let classMe = isMe ? 'lb-me' : '';
+            lbHTML += `<li class="${classMe}"><span class="lb-rank">${i + 1}.</span><span class="lb-name">${name}</span></li>`;
         }
     }
     
@@ -303,16 +331,17 @@ socket.on('update', (data) => {
         let myRank = sortedPlayers.findIndex(p => p.id === myId) + 1;
         let me = players[myId];
         let name = me.name || 'Unnamed';
-        let prefix = me.level ? `[Lv ${me.level}] ` : '';
-        lbHTML += `<li style="color: #ffeb3b; font-weight: bold; margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 5px;">${myRank}. ${prefix}${name} - ${me.score}</li>`;
+        lbHTML += `<li class="lb-me" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.2);"><span class="lb-rank">${myRank}.</span><span class="lb-name">${name}</span></li>`;
     }
 
-    document.getElementById('leaderboard-list').innerHTML = lbHTML;
+    let lbList = document.getElementById('leaderboard-list');
+    if (lbList) lbList.innerHTML = lbHTML;
 });
 
 socket.on('chatMsg', (data) => {
     let el = document.createElement('div');
-    el.innerHTML = `<strong>${data.name}:</strong> ${data.msg}`;
+    el.className = 'chat-msg';
+    el.innerHTML = `<span class="chat-name">${data.name}:</span> <span class="chat-text">${data.msg}</span>`;
     chatMessages.appendChild(el);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     
@@ -328,7 +357,7 @@ socket.on('chatMsg', (data) => {
     }
 });
 
-socket.on('died', () => {
+socket.on('died', (stats) => {
     let gainedXp = Math.floor(maxMass / 10);
     xp += gainedXp;
     localStorage.setItem('agario_xp', xp);
@@ -340,7 +369,16 @@ socket.on('died', () => {
     
     document.getElementById('level-display').innerText = `Level ${level}`;
     document.getElementById('level-progress').style.width = `${progress}%`;
-    document.getElementById('death-stats').innerText = `Peak Mass: ${Math.floor(maxMass)}\nXP Gained: +${gainedXp}`;
+
+    let statsHtml = `
+        <div style="font-size: 16px; margin-bottom: 5px;">Time Alive: <strong>${Math.floor(stats.timeAlive / 60)}m ${stats.timeAlive % 60}s</strong></div>
+        <div style="font-size: 16px; margin-bottom: 5px;">Highest Score: <strong>${stats.maxScore}</strong></div>
+        <div style="font-size: 16px; margin-bottom: 5px;">Food Eaten: <strong>${stats.foodEaten}</strong></div>
+        <div style="font-size: 16px; margin-bottom: 15px;">Cells Eaten: <strong>${stats.cellsEaten}</strong></div>
+        <div style="font-size: 14px; color: #5cb85c;">XP Gained: <strong>+${gainedXp}</strong></div>
+    `;
+
+    document.getElementById('death-stats').innerHTML = statsHtml;
     
     document.getElementById('game-over').style.display = 'block';
     isPlaying = false;
@@ -403,7 +441,7 @@ function drawCircle(x, y, r, color, hasText, ownerId) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         let fontSize = Math.max(12, r/3);
-        ctx.font = 'bold ' + fontSize + 'px sans-serif';
+        ctx.font = 'bold ' + fontSize + 'px Ubuntu, sans-serif';
         ctx.shadowColor = 'rgba(0,0,0,0.5)';
         ctx.shadowBlur = 2;
         
@@ -416,7 +454,7 @@ function drawCircle(x, y, r, color, hasText, ownerId) {
         }
         
         if (showMass && r > 30) {
-            ctx.font = 'bold ' + (fontSize * 0.5) + 'px sans-serif';
+            ctx.font = 'bold ' + (fontSize * 0.5) + 'px Ubuntu, sans-serif';
             let mass = Math.floor((Math.PI * r * r) / 100);
             ctx.fillText(mass, x, y + (showNames ? fontSize/2 : 0));
         }

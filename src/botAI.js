@@ -344,7 +344,8 @@ function manageBots(game) {
             name: botName,
             personality: ['Aggressive', 'Timid', 'Scavenger'][Math.floor(Math.random() * 3)],
             score: 0, maxScore: 0,
-            xp: Math.floor(Math.random() * 500), level: 1
+            xp: Math.floor(Math.random() * 500), level: 1,
+            stats: { foodEaten: 0, cellsEaten: 0, spawnTime: Date.now() }
         };
         let isInitialSpawn = (game.totalBotsCreated || 0) < config.MIN_PLAYERS;
         game.totalBotsCreated = (game.totalBotsCreated || 0) + 1;
