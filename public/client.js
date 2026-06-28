@@ -350,18 +350,41 @@ socket.on('died', () => {
 function drawCircle(x, y, r, color, hasText, ownerId) {
     let actualR = Math.max(1, r);
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, actualR, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-
     let playerName = (hasText && players[ownerId]) ? players[ownerId].name : null;
     let skinKey = playerName ? playerName.toLowerCase() : null;
     let skinImg = skinKey ? loadedSkins[skinKey] : null;
 
+    ctx.save();
+    ctx.beginPath();
+    
+    if (hasText && actualR > 15 && !skinImg) {
+        let time = Date.now() / 300;
+        let points = Math.min(60, Math.floor(actualR / 4) + 15);
+        let angleStep = (Math.PI * 2) / points;
+        
+        for (let i = 0; i <= points; i++) {
+            let angle = i * angleStep;
+            // The wobble effect formula
+            let wobble = Math.sin(angle * 5 + time + ownerId.length) * (actualR * 0.03); 
+            if (wobble > 5) wobble = 5;
+            
+            let px = x + Math.cos(angle) * (actualR + wobble);
+            let py = y + Math.sin(angle) * (actualR + wobble);
+            
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+    } else {
+        ctx.arc(x, y, actualR, 0, Math.PI * 2);
+    }
+    
+    ctx.closePath();
+
     if (skinImg && skinImg.complete && skinImg.naturalWidth !== 0) {
+        ctx.save();
+        ctx.clip();
         ctx.drawImage(skinImg, x - actualR, y - actualR, actualR * 2, actualR * 2);
+        ctx.restore();
     } else {
         ctx.fillStyle = color;
         ctx.fill();
@@ -370,7 +393,6 @@ function drawCircle(x, y, r, color, hasText, ownerId) {
     ctx.lineWidth = 3;
     ctx.strokeStyle = darkenColor(color, 20);
     ctx.stroke();
-    
     ctx.restore();
 
     if (hasText && r > 15 && players[ownerId]) {
@@ -550,21 +572,34 @@ function loop() {
     ctx.lineWidth = 10;
     ctx.strokeRect(0, 0, WORLD_SIZE, WORLD_SIZE);
 
+    let camMinX = camX - vw / 2;
+    let camMaxX = camX + vw / 2;
+    let camMinY = camY - vh / 2;
+    let camMaxY = camY + vh / 2;
+
     for (let f of foods) {
-        if (f) drawCircle(f.x, f.y, f.r, f.color, false);
+        if (f && f.x + f.r >= camMinX && f.x - f.r <= camMaxX && f.y + f.r >= camMinY && f.y - f.r <= camMaxY) {
+            drawCircle(f.x, f.y, f.r, f.color, false);
+        }
     }
     
     for (let m of ejectedMass) {
-        if (m) drawCircle(m.x, m.y, m.r, m.color, false);
+        if (m && m.x + m.r >= camMinX && m.x - m.r <= camMaxX && m.y + m.r >= camMinY && m.y - m.r <= camMaxY) {
+            drawCircle(m.x, m.y, m.r, m.color, false);
+        }
     }
 
     let sortedCells = cells.slice().sort((a, b) => a.r - b.r);
     for (let c of sortedCells) {
-        drawCircle(c.x, c.y, c.r, c.color, true, c.ownerId);
+        if (c.x + c.r >= camMinX && c.x - c.r <= camMaxX && c.y + c.r >= camMinY && c.y - c.r <= camMaxY) {
+            drawCircle(c.x, c.y, c.r, c.color, true, c.ownerId);
+        }
     }
 
     for (let v of viruses) {
-        if (v) drawVirus(v.x, v.y, v.r);
+        if (v && v.x + v.r >= camMinX && v.x - v.r <= camMaxX && v.y + v.r >= camMinY && v.y - v.r <= camMaxY) {
+            drawVirus(v.x, v.y, v.r);
+        }
     }
     ctx.restore();
     requestAnimationFrame(loop);

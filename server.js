@@ -24,10 +24,14 @@ const game = new Game(io);
 
 io.on('connection', (socket) => {
     socket.on('join', (payload) => {
+        if (!payload) return;
         let name = typeof payload === 'object' ? payload.name : payload;
-        let level = typeof payload === 'object' ? payload.level : 1;
+        if (typeof name !== 'string') name = 'Player';
+        name = name.substring(0, 15);
+        
+        let level = (typeof payload === 'object' && typeof payload.level === 'number') ? payload.level : 1;
         let mode = typeof payload === 'object' ? payload.mode : 'FFA';
-        if (mode) game.mode = mode;
+        if (mode === 'FFA' || mode === 'Fast Merge') game.mode = mode;
         
         let data = game.addPlayer(socket.id, name);
         if (game.players[socket.id]) game.players[socket.id].level = level;
@@ -40,13 +44,17 @@ io.on('connection', (socket) => {
     });
 
     socket.on('chatMsg', (msg) => {
+        if (typeof msg !== 'string') return;
+        msg = msg.substring(0, 100);
         let p = game.players[socket.id];
         let name = p ? p.name : 'Spectator';
         io.emit('chatMsg', { name: name, msg: msg });
     });
 
     socket.on('updateTarget', (target) => {
-        game.updateTarget(socket.id, target);
+        if (target && typeof target.x === 'number' && !isNaN(target.x) && typeof target.y === 'number' && !isNaN(target.y)) {
+            game.updateTarget(socket.id, target);
+        }
     });
 
     socket.on('split', () => {

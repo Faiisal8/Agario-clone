@@ -16,237 +16,312 @@ function updateBots(game, shCells, shFoods, shViruses) {
             };
         }
         
-        let p = bot.personality || 'Aggressive';
-        let thinkRate = p === 'Aggressive' ? 50 : (p === 'Timid' ? 80 : 120);
+        // Bots think faster to react like pros
+        let thinkRate = 40; 
         
         if (!bot.lastDecision || now - bot.lastDecision > thinkRate) {
             bot.lastDecision = now;
             let botCells = game.cells.filter(c => c.ownerId === id);
-            if(botCells.length > 0) {
-                let botCell = botCells.sort((a,b) => b.r - a.r)[0];
-                
-                let threats = [];
-                let postSplitThreats = [];
-                let doubleSplitThreats = [];
-                let preys = [];
+            if(botCells.length === 0) continue;
+            
+            let botCell = botCells.sort((a,b) => b.r - a.r)[0];
+            let isMaxCells = botCells.length >= 16;
+            
+            let allies = [];
+            let threats = [];
+            let preys = [];
+            let nearbyViruses = shViruses.query({x: botCell.x, y: botCell.y, r: 1500});
 
-                let nearbyCells = shCells.query({x: botCell.x, y: botCell.y, r: 1500});
-                for (let other of nearbyCells) {
-                    if (other.ownerId === id) continue;
-                    
-                    let d = Math.max(1, Math.hypot(botCell.x - other.x, botCell.y - other.y));
-                    if (d < 1500) {
-                        if (other.r > botCell.r * 1.1) {
-                            threats.push({cell: other, d: d});
-                            postSplitThreats.push({cell: other, d: d});
-                            doubleSplitThreats.push({cell: other, d: d});
-                        } else {
-                            let postSplitRadius = botCell.r * 0.707;
-                            if (other.r > postSplitRadius * 1.1) postSplitThreats.push({cell: other, d: d});
-                            
-                            let doubleSplitRadius = botCell.r * 0.5;
-                            if (other.r > doubleSplitRadius * 1.1) doubleSplitThreats.push({cell: other, d: d});
-                            
-                            if (botCell.r > other.r * 1.1 && other.r > botCell.r * 0.15) {
-                                preys.push({cell: other, d: d});
-                            }
-                        }
+            let nearbyCells = shCells.query({x: botCell.x, y: botCell.y, r: 2500});
+            for (let other of nearbyCells) {
+                if (other.ownerId === id) continue;
+                let otherPlayer = game.players[other.ownerId];
+                if (!otherPlayer) continue;
+
+                let dSq = (botCell.x - other.x)**2 + (botCell.y - other.y)**2;
+                let d = Math.max(1, Math.sqrt(dSq));
+                
+                if (d < 2500) {
+                    if (otherPlayer.team && otherPlayer.team === bot.team) {
+                        allies.push({cell: other, player: otherPlayer, d: d, dSq: dSq});
+                    } else if (other.r > botCell.r * 1.1) {
+                        threats.push({cell: other, d: d, dSq: dSq});
+                    } else if (botCell.r > other.r * 1.1 && other.r > botCell.r * 0.1) {
+                        preys.push({cell: other, d: d, dSq: dSq});
                     }
                 }
-                
-                let nearbyViruses = shViruses.query({x: botCell.x, y: botCell.y, r: 800});
-                
-                let dx = 0;
-                let dy = 0;
+            }
+            
+            let dx = 0;
+            let dy = 0;
+            let actionTaken = false;
 
-                let threatMult = p === 'Aggressive' ? 0.5 : (p === 'Timid' ? 3.0 : 1.0);
+            // 5. Defensive "Bail Out" Splitting
+            if (!isMaxCells) {
                 for (let t of threats) {
-                    let splitDangerZone = (t.cell.r > botCell.r * 2.2) ? (t.cell.r * 2 + botCell.r + 50) : (t.cell.r + botCell.r + 50);
-                    
-                    if (t.d < splitDangerZone + 300) {
-                        let panicMult = (t.d < splitDangerZone) ? 10.0 : 1.0;
-                        let force = - (t.cell.r / botCell.r) * (200000 * threatMult * panicMult) / (t.d * t.d);
-                        dx += ((t.cell.x - botCell.x) / t.d) * force;
-                        dy += ((t.cell.y - botCell.y) / t.d) * force;
-                    }
-                }
-
-                let isMaxCells = botCells.length >= 16;
-                
-                if (botCell.r > 65) {
-                    for (let v of nearbyViruses) {
-                        let dist = Math.max(1, Math.hypot(botCell.x - v.x, botCell.y - v.y));
-                        
-                        if (isMaxCells) {
-                            let force = 5000 / dist;
-                            dx += ((v.x - botCell.x) / dist) * force;
-                            dy += ((v.y - botCell.y) / dist) * force;
-                        } else {
-                            if (dist < botCell.r + 150) {
-                                let force = 200000 / (dist * dist);
-                                let vecX = (v.x - botCell.x) / dist;
-                                let vecY = (v.y - botCell.y) / dist;
-                                
-                                let perpX = -vecY;
-                                let perpY = vecX;
-                                
-                                dx += perpX * (force * 2.5) - vecX * (force * 0.5);
-                                dy += perpY * (force * 2.5) - vecY * (force * 0.5);
-                            }
-                        }
-                    }
-                }
-
-                let preyMult = p === 'Aggressive' ? 2.0 : (p === 'Timid' ? 0.5 : 0.2);
-                for (let pCell of preys) {
-                    let sizeRatio = pCell.cell.r / botCell.r;
-                    let force = (sizeRatio * sizeRatio) * (100000 * preyMult) / pCell.d;
-                    dx += ((pCell.cell.x - botCell.x) / pCell.d) * force;
-                    dy += ((pCell.cell.y - botCell.y) / pCell.d) * force;
-                    
-                    if (p === 'Aggressive' && botCell.r > 200 && pCell.d < botCell.r + 500 && sizeRatio < 0.3) {
-                        if (now - (bot.botState.lastEjectTime || 0) > 1000 && Math.random() < 0.1) {
-                            bot.targetX = pCell.cell.x;
-                            bot.targetY = pCell.cell.y;
-                            game.executeEject(id);
-                            bot.botState.lastEjectTime = now;
-                        }
-                    }
-                    
-                    let splitCooldown = p === 'Aggressive' ? 500 : (p === 'Timid' ? 2000 : 1000);
-                    if (now - (bot.lastSplitTime || 0) > splitCooldown) {
-                        if (botCell.r > pCell.cell.r * 2.2 && sizeRatio > 0.15 && pCell.d > botCell.r + pCell.cell.r) {
-                            
-                            let predictedX = pCell.cell.x + (pCell.cell.vx || 0) * 10;
-                            let predictedY = pCell.cell.y + (pCell.cell.vy || 0) * 10;
-                            
-                            if (pCell.d < botCell.r + 350 && postSplitThreats.length === 0) {
-                                bot.targetX = predictedX;
-                                bot.targetY = predictedY;
-                                game.executeSplit(id);
-                                bot.lastSplitTime = now;
-                            } else if (pCell.d < botCell.r + 700 && botCell.r > pCell.cell.r * 4.5 && doubleSplitThreats.length === 0 && p !== 'Timid') {
-                                bot.targetX = predictedX;
-                                bot.targetY = predictedY;
-                                game.executeSplit(id);
-                                setTimeout(() => {
-                                    if (game.players[id]) {
-                                        bot.targetX = predictedX;
-                                        bot.targetY = predictedY;
-                                        game.executeSplit(id);
-                                    }
-                                }, 50);
-                                bot.lastSplitTime = now;
-                            }
-                        }
-                    }
-                }
-
-                let foodMult = p === 'Scavenger' ? 3.0 : 1.0;
-                let nearbyFoods = shFoods.query({x: botCell.x, y: botCell.y, r: 800});
-                for (let f of nearbyFoods) {
-                    let dist = Math.max(1, Math.hypot(botCell.x - f.x, botCell.y - f.y));
-                    let force = (600 * foodMult) / dist;
-                    dx += ((f.x - botCell.x) / dist) * force;
-                    dy += ((f.y - botCell.y) / dist) * force;
-                }
-
-                if (botCells.length > 1) {
-                    let cx = 0, cy = 0;
-                    for (let c of botCells) { cx += c.x; cy += c.y; }
-                    cx /= botCells.length;
-                    cy /= botCells.length;
-                    let dist = Math.max(1, Math.hypot(cx - botCell.x, cy - botCell.y));
-                    
-                    let mergeTime = game.mode === 'Fast Merge' ? 1000 : 15000;
-                    let canMerge = (now - (botCell.splitTime || 0)) > mergeTime;
-                    let force = canMerge ? 5000 / dist : 1000 / dist;
-                    dx += ((cx - botCell.x) / dist) * force;
-                    dy += ((cy - botCell.y) / dist) * force;
-                    
-                    if (botCells.length > 3 && threats.length > 0 && now - (bot.botState.lastEjectTime || 0) > 100) {
-                        bot.targetX = botCell.x;
-                        bot.targetY = botCell.y;
-                        game.executeEject(id);
-                        bot.botState.lastEjectTime = now;
-                    }
-                }
-
-                let wallMargin = botCell.r + 100;
-                let wallForce = 100000;
-                if (botCell.x < wallMargin) dx += wallForce / (botCell.x * botCell.x || 1);
-                if (botCell.y < wallMargin) dy += wallForce / (botCell.y * botCell.y || 1);
-                let distX = config.WORLD_WIDTH - botCell.x;
-                let distY = config.WORLD_HEIGHT - botCell.y;
-                if (distX < wallMargin) dx -= wallForce / (distX * distX || 1);
-                if (distY < wallMargin) dy -= wallForce / (distY * distY || 1);
-
-                for (let t of threats) {
-                    if (t.d < botCell.r + t.cell.r + 50 && botCell.r > 40) {
-                        if (now - (bot.botState.lastEjectTime || 0) > 200) {
-                            game.executeEject(id);
-                            bot.botState.lastEjectTime = now;
+                    if (t.d < t.cell.r + botCell.r + 150) {
+                        if (t.cell.r > botCell.r * 1.1 && (now - (bot.lastSplitTime || 0) > 1000)) {
+                            // Bail out! Split perfectly away from the threat
+                            bot.targetX = botCell.x - (t.cell.x - botCell.x) * 100;
+                            bot.targetY = botCell.y - (t.cell.y - botCell.y) * 100;
+                            game.executeSplit(id);
+                            bot.lastSplitTime = now;
+                            actionTaken = true;
                             break;
                         }
                     }
                 }
+            }
 
-                if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
-                    if (!bot.botState.wanderX || Math.hypot(botCell.x - bot.botState.wanderX, botCell.y - bot.botState.wanderY) < 200 || Math.random() < 0.05) {
-                        bot.botState.wanderX = Math.random() * config.WORLD_WIDTH;
-                        bot.botState.wanderY = Math.random() * config.WORLD_HEIGHT;
-                    }
-                    let wDist = Math.max(1, Math.hypot(bot.botState.wanderX - botCell.x, bot.botState.wanderY - botCell.y));
-                    dx += ((bot.botState.wanderX - botCell.x) / wDist) * 50;
-                    dy += ((bot.botState.wanderY - botCell.y) / wDist) * 50;
-                }
-
-                dx = dx * 0.1 + (bot.botState.lastDx || 0) * 0.9;
-                dy = dy * 0.1 + (bot.botState.lastDy || 0) * 0.9;
-                bot.botState.lastDx = dx;
-                bot.botState.lastDy = dy;
-
-                let isShooting = false;
-
-                if (botCell.r > 130 && now - (bot.botState.lastEjectTime || 0) > 100) {
+            // 2. Virus Sniping (Trickshots)
+            if (!actionTaken && botCell.r > 150 && threats.length > 0) {
+                let closestThreat = threats.sort((a,b) => a.d - b.d)[0];
+                if (closestThreat.d < 1000 && closestThreat.cell.r > 130) {
                     for (let v of nearbyViruses) {
-                        if (isShooting) break;
-                        let distToVirus = Math.hypot(botCell.x - v.x, botCell.y - v.y);
-                        if (distToVirus < 400) {
-                            let targets = [...threats, ...preys.filter(p => p.cell.r > 150)];
-                            for (let t of targets) {
-                                let vx = v.x - botCell.x;
-                                let vy = v.y - botCell.y;
-                                let tx = t.cell.x - v.x;
-                                let ty = t.cell.y - v.y;
-                                let dot = (vx * tx + vy * ty);
-                                if (dot > 0) {
-                                    let distV = Math.hypot(vx, vy);
-                                    let distT = Math.hypot(tx, ty);
-                                    let cosTheta = dot / (distV * distT);
-                                    if (cosTheta > 0.95 && distT < 800) {
-                                        bot.targetX = v.x;
-                                        bot.targetY = v.y;
+                        let distToVirus = Math.sqrt((botCell.x - v.x)**2 + (botCell.y - v.y)**2);
+                        if (distToVirus < botCell.r + 300) { // Can reach virus with W
+                            let vx = v.x - botCell.x;
+                            let vy = v.y - botCell.y;
+                            let tx = closestThreat.cell.x - v.x;
+                            let ty = closestThreat.cell.y - v.y;
+                            
+                            let dot = (vx * tx + vy * ty);
+                            if (dot > 0) {
+                                let distV = Math.sqrt(vx*vx + vy*vy);
+                                let distT = Math.sqrt(tx*tx + ty*ty);
+                                let cosTheta = dot / (distV * distT);
+                                
+                                // Perfect alignment check (> 0.98 cosTheta)
+                                if (cosTheta > 0.98 && distT < 800) {
+                                    bot.targetX = v.x;
+                                    bot.targetY = v.y;
+                                    // Rapid fire W to snipe!
+                                    if (now - (bot.botState.lastEjectTime || 0) > 50) {
                                         game.executeEject(id);
                                         bot.botState.lastEjectTime = now;
-                                        isShooting = true;
-                                        break;
                                     }
+                                    actionTaken = true;
+                                    dx = 0; dy = 0;
+                                    break;
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                let finalDist = Math.hypot(dx, dy);
-                if (finalDist > 0 && !isShooting) {
+            // 1. Perfect Split-Kill Calculations
+            if (!actionTaken && !isMaxCells && (now - (bot.lastSplitTime || 0) > 800)) {
+                for (let pCell of preys) {
+                    let postSplitRadius = botCell.r * 0.707;
+                    if (postSplitRadius > pCell.cell.r * 1.1) {
+                        let splitReach = botCell.r + postSplitRadius + 300; // Perfect split reach
+                        if (pCell.d < splitReach && pCell.d > botCell.r + pCell.cell.r + 20) {
+                            let targetVx = pCell.cell.vx || 0;
+                            let targetVy = pCell.cell.vy || 0;
+                            
+                            // Lead the target
+                            bot.targetX = pCell.cell.x + targetVx * 10;
+                            bot.targetY = pCell.cell.y + targetVy * 10;
+                            game.executeSplit(id);
+                            bot.lastSplitTime = now;
+                            actionTaken = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // FEATURE: Cooperative Teaming (Mass Sharing & Trick-splitting)
+            if (!actionTaken && allies.length > 0) {
+                let biggestAlly = allies.sort((a,b) => b.cell.r - a.cell.r)[0];
+                if (biggestAlly.cell.r > botCell.r && biggestAlly.d < 800) {
+                    let allyCanBeHelped = false;
+                    for (let p of preys) {
+                        if (biggestAlly.cell.r > p.cell.r * 1.05 && biggestAlly.cell.r < p.cell.r * 1.5 && p.d < 1200) {
+                            allyCanBeHelped = true; break;
+                        }
+                    }
+                    
+                    if (allyCanBeHelped && (now - (bot.botState.lastEjectTime || 0) > 100)) {
+                        bot.targetX = biggestAlly.cell.x;
+                        bot.targetY = biggestAlly.cell.y;
+                        game.executeEject(id);
+                        bot.botState.lastEjectTime = now;
+                        actionTaken = true;
+                    } else if (botCell.r > 150 && biggestAlly.cell.r > botCell.r * 1.5 && threats.length > 0 && !isMaxCells) {
+                        // Trick split into ally to save mass if under threat
+                        bot.targetX = biggestAlly.cell.x;
+                        bot.targetY = biggestAlly.cell.y;
+                        game.executeSplit(id);
+                        bot.lastSplitTime = now;
+                        actionTaken = true;
+                    }
+                }
+            }
+
+            // FEATURE: Advanced Multi-Cell Management (Self-Feeding)
+            if (!actionTaken && botCells.length >= 8 && botCell.r > 100) {
+                let smallestBotCell = botCells.sort((a,b) => a.r - b.r)[0];
+                if (smallestBotCell.r < 50 && (now - (bot.botState.lastEjectTime || 0) > 100)) {
+                    let cx = 0, cy = 0;
+                    for (let c of botCells) { cx += c.x; cy += c.y; }
+                    cx /= botCells.length; cy /= botCells.length;
+                    bot.targetX = cx; bot.targetY = cy;
+                    game.executeEject(id);
+                    bot.botState.lastEjectTime = now;
+                }
+            }
+
+            if (!actionTaken) {
+                // FEATURE: Predictive Evasion & Dodging (Perpendicular Dodging)
+                for (let t of threats) {
+                    let splitDangerZone = (t.cell.r > botCell.r * 2.2) ? (t.cell.r * 2 + botCell.r + 300) : (t.cell.r + botCell.r + 100);
+                    if (t.d < splitDangerZone) {
+                        let force = 500000 / (t.dSq || 1);
+                        
+                        let escapeX = (botCell.x - t.cell.x) / t.d;
+                        let escapeY = (botCell.y - t.cell.y) / t.d;
+                        
+                        if (t.cell.r > botCell.r * 2.2 && t.d < t.cell.r * 2 + 200) {
+                            // Perpendicular dodge
+                            let perpX = -escapeY;
+                            let perpY = escapeX;
+                            let centerX = config.WORLD_WIDTH / 2;
+                            let centerY = config.WORLD_HEIGHT / 2;
+                            let toCenterX = centerX - botCell.x;
+                            let toCenterY = centerY - botCell.y;
+                            let dot = (perpX * toCenterX + perpY * toCenterY);
+                            if (dot < 0) { perpX = -perpX; perpY = -perpY; }
+                            
+                            escapeX = (escapeX + perpX * 2) / 3;
+                            escapeY = (escapeY + perpY * 2) / 3;
+                        }
+
+                        dx += escapeX * force;
+                        dy += escapeY * force;
+                    }
+                }
+
+                // Chasing and Corner Trapping
+                for (let pCell of preys) {
+                    let force = 200000 / (pCell.dSq || 1);
+                    
+                    let wallDistX = Math.min(pCell.cell.x, config.WORLD_WIDTH - pCell.cell.x);
+                    let wallDistY = Math.min(pCell.cell.y, config.WORLD_HEIGHT - pCell.cell.y);
+                    
+                    let dirX = (pCell.cell.x - botCell.x) / pCell.d;
+                    let dirY = (pCell.cell.y - botCell.y) / pCell.d;
+                    
+                    // Trap logic: Predict and herd towards corners
+                    if (wallDistX < 800) {
+                        dirY += (botCell.y < config.WORLD_HEIGHT / 2) ? 0.8 : -0.8; 
+                    }
+                    if (wallDistY < 800) {
+                        dirX += (botCell.x < config.WORLD_WIDTH / 2) ? 0.8 : -0.8;
+                    }
+
+                    let dirLen = Math.sqrt(dirX*dirX + dirY*dirY) || 1;
+                    dirX /= dirLen; dirY /= dirLen;
+
+                    dx += dirX * force;
+                    dy += dirY * force;
+                }
+                
+                // FEATURE: Macro Map Control (Virus Shielding)
+                if (botCell.r > 60 && !isMaxCells) {
+                    let beingChased = threats.some(t => t.d < 1000 && t.cell.r > botCell.r * 1.5);
+                    for (let v of nearbyViruses) {
+                        let distSq = (botCell.x - v.x)**2 + (botCell.y - v.y)**2;
+                        let dist = Math.sqrt(distSq);
+                        
+                        if (beingChased && botCell.r < v.r * 1.05) {
+                            // Use virus as shield (hide behind it)
+                            if (dist < 300 && dist > v.r + botCell.r + 10) {
+                                let force = 50000 / distSq;
+                                dx += ((v.x - botCell.x) / dist) * force;
+                                dy += ((v.y - botCell.y) / dist) * force;
+                            }
+                        } else if (dist < botCell.r + 150) {
+                            let force = 300000 / distSq;
+                            dx -= ((v.x - botCell.x) / dist) * force;
+                            dy -= ((v.y - botCell.y) / dist) * force;
+                        }
+                    }
+                }
+
+                // Food
+                let nearbyFoods = shFoods.query({x: botCell.x, y: botCell.y, r: 800});
+                for (let f of nearbyFoods) {
+                    let distSq = (botCell.x - f.x)**2 + (botCell.y - f.y)**2;
+                    let dist = Math.sqrt(distSq);
+                    let force = 1000 / dist;
+                    dx += ((f.x - botCell.x) / dist) * force;
+                    dy += ((f.y - botCell.y) / dist) * force;
+                }
+
+                // Wall Avoidance
+                let wallMargin = botCell.r + 50;
+                let wallForce = 200000;
+                if (botCell.x < wallMargin) dx += wallForce / (botCell.x * botCell.x || 1);
+                if (botCell.y < wallMargin) dy += wallForce / (botCell.y * botCell.y || 1);
+                let distWX = config.WORLD_WIDTH - botCell.x;
+                let distWY = config.WORLD_HEIGHT - botCell.y;
+                if (distWX < wallMargin) dx -= wallForce / (distWX * distWX || 1);
+                if (distWY < wallMargin) dy -= wallForce / (distWY * distWY || 1);
+
+                // FEATURE: Macro Map Control (Center Dominance)
+                if (botCell.r > 200 && preys.length === 0 && threats.length === 0) {
+                    let centerX = config.WORLD_WIDTH / 2;
+                    let centerY = config.WORLD_HEIGHT / 2;
+                    let cDist = Math.max(1, Math.sqrt((centerX - botCell.x)**2 + (centerY - botCell.y)**2));
+                    let force = 20000 / cDist;
+                    dx += ((centerX - botCell.x) / cDist) * force;
+                    dy += ((centerY - botCell.y) / cDist) * force;
+                }
+
+                // Wander
+                if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+                    if (!bot.botState.wanderX || ((botCell.x - bot.botState.wanderX)**2 + (botCell.y - bot.botState.wanderY)**2) < 40000 || Math.random() < 0.05) {
+                        bot.botState.wanderX = Math.random() * config.WORLD_WIDTH;
+                        bot.botState.wanderY = Math.random() * config.WORLD_HEIGHT;
+                    }
+                    let wDist = Math.max(1, Math.sqrt((bot.botState.wanderX - botCell.x)**2 + (bot.botState.wanderY - botCell.y)**2));
+                    dx += ((bot.botState.wanderX - botCell.x) / wDist) * 50;
+                    dy += ((bot.botState.wanderY - botCell.y) / wDist) * 50;
+                }
+
+                // FEATURE: Merge handling & Cell Overlap
+                if (botCells.length > 1) {
+                    let cx = 0, cy = 0;
+                    for (let c of botCells) { cx += c.x; cy += c.y; }
+                    cx /= botCells.length;
+                    cy /= botCells.length;
+                    let dist = Math.max(1, Math.sqrt((cx - botCell.x)**2 + (cy - botCell.y)**2));
+                    
+                    let mergeTime = game.mode === 'Fast Merge' ? 1000 : 15000;
+                    let canMerge = (now - (botCell.splitTime || 0)) > mergeTime;
+                    // If can merge, force cells together aggressively
+                    let force = canMerge ? 20000 / dist : 1000 / dist;
+                    dx += ((cx - botCell.x) / dist) * force;
+                    dy += ((cy - botCell.y) / dist) * force;
+                }
+
+                // Smoothing vector movement
+                dx = dx * 0.2 + (bot.botState.lastDx || 0) * 0.8;
+                dy = dy * 0.2 + (bot.botState.lastDy || 0) * 0.8;
+                bot.botState.lastDx = dx;
+                bot.botState.lastDy = dy;
+
+                let finalDist = Math.sqrt(dx*dx + dy*dy);
+                if (finalDist > 0) {
                     bot.targetX = botCell.x + (dx / finalDist) * 1000;
                     bot.targetY = botCell.y + (dy / finalDist) * 1000;
                 }
-                
-                bot.targetX = Math.max(0, Math.min(config.WORLD_WIDTH, bot.targetX));
-                bot.targetY = Math.max(0, Math.min(config.WORLD_HEIGHT, bot.targetY));
             }
+            
+            bot.targetX = Math.max(0, Math.min(config.WORLD_WIDTH, bot.targetX));
+            bot.targetY = Math.max(0, Math.min(config.WORLD_HEIGHT, bot.targetY));
         }
     }
 }
@@ -255,12 +330,18 @@ function manageBots(game) {
     let total = Object.keys(game.players).length;
     if (total < config.MIN_PLAYERS) {
         let botId = 'bot_' + Math.random().toString(36).substr(2, 9);
+        
+        let clans = ['[PRO]', '[GOD]', '[ZOO]', '[WIN]'];
+        let clan = clans[Math.floor(Math.random() * clans.length)];
+        let botName = clan + ' ' + config.BOT_NAMES[Math.floor(Math.random() * config.BOT_NAMES.length)];
+        
         game.players[botId] = {
             isBot: true,
+            team: clan,
             targetX: Math.random() * config.WORLD_WIDTH,
             targetY: Math.random() * config.WORLD_HEIGHT,
             color: getRandomColor(),
-            name: config.BOT_NAMES[Math.floor(Math.random() * config.BOT_NAMES.length)],
+            name: botName,
             personality: ['Aggressive', 'Timid', 'Scavenger'][Math.floor(Math.random() * 3)],
             score: 0, maxScore: 0,
             xp: Math.floor(Math.random() * 500), level: 1
@@ -283,3 +364,4 @@ function manageBots(game) {
 }
 
 module.exports = { updateBots, manageBots };
+

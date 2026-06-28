@@ -112,7 +112,7 @@ class Game {
                 
                 let dx = this.players[playerId].targetX - c.x;
                 let dy = this.players[playerId].targetY - c.y;
-                let dist = Math.hypot(dx, dy);
+                let dist = Math.sqrt(dx * dx + dy * dy);
                 let dirX = dist > 0 ? dx/dist : 1;
                 let dirY = dist > 0 ? dy/dist : 0;
 
@@ -143,11 +143,11 @@ class Game {
                 
                 let dx = this.players[playerId].targetX - c.x;
                 let dy = this.players[playerId].targetY - c.y;
-                let dist = Math.hypot(dx, dy);
+                let dist = Math.sqrt(dx * dx + dy * dy);
                 let dirX = dist > 0 ? dx/dist : 1;
                 let dirY = dist > 0 ? dy/dist : 0;
 
-                let ejectSpeed = config.EJECT_SPEED + (c.r * 0.15);
+                let ejectSpeed = config.EJECT_SPEED;
 
                 this.ejectedMass.push({
                     id: Math.random().toString(36),
@@ -218,7 +218,7 @@ class Game {
             if (!p) continue;
             let dx = p.targetX - c.x;
             let dy = p.targetY - c.y;
-            let dist = Math.hypot(dx, dy);
+            let dist = Math.sqrt(dx * dx + dy * dy);
             
             c.x += c.vx; c.y += c.vy;
             c.vx *= 0.9; c.vy *= 0.9;
@@ -246,7 +246,7 @@ class Game {
             for (let c2 of nearby) {
                 if (c1.id >= c2.id || cellsToKill.has(c2.id)) continue;
                 let dx = c1.x - c2.x, dy = c1.y - c2.y;
-                let dist = Math.hypot(dx, dy);
+                let dist = Math.sqrt(dx * dx + dy * dy);
 
                 if (c1.ownerId === c2.ownerId) {
                     let isFast = this.mode === 'Fast Merge';
@@ -291,7 +291,7 @@ class Game {
             let nearbyFood = shFoods.query(c);
             for (let f of nearbyFood) {
                 if (f.eaten) continue;
-                if (Math.hypot(c.x - f.x, c.y - f.y) < c.r) {
+                if ((c.x - f.x)*(c.x - f.x) + (c.y - f.y)*(c.y - f.y) < c.r * c.r) {
                     c.r = getRadius(getArea(c.r) + getArea(f.r) * foodGrowth);
                     f.eaten = true;
                     foodEaten.push(f.id);
@@ -313,11 +313,11 @@ class Game {
             let nearbyMass = shEjected.query(v);
             for (let m of nearbyMass) {
                 if (m.eaten) continue;
-                if (Math.hypot(v.x - m.x, v.y - m.y) < v.r) {
+                if ((v.x - m.x)*(v.x - m.x) + (v.y - m.y)*(v.y - m.y) < v.r * v.r) {
                     m.eaten = true; v.r += 2; v.fed = (v.fed || 0) + 1;
                     if (v.fed >= 7) {
                         v.fed = 0; v.r = 45;
-                        let dist = Math.hypot(m.vx, m.vy);
+                        let dist = Math.sqrt(m.vx * m.vx + m.vy * m.vy);
                         let dirX = dist > 0 ? m.vx/dist : 1; let dirY = dist > 0 ? m.vy/dist : 0;
                         if (dist === 0) { dirX = 1; dirY = 0; }
                         this.viruses.push({ id: Math.random().toString(36), x: v.x, y: v.y, r: 45, fed: 0, vx: dirX * 20, vy: dirY * 20 });
@@ -330,7 +330,7 @@ class Game {
             let nearbyMass = shEjected.query(c);
             for (let m of nearbyMass) {
                 if (m.eaten) continue;
-                if (Math.hypot(c.x - m.x, c.y - m.y) < c.r && c.r > m.r * 1.1) {
+                if ((c.x - m.x)*(c.x - m.x) + (c.y - m.y)*(c.y - m.y) < c.r * c.r && c.r > m.r * 1.1) {
                     c.r = getRadius(getArea(c.r) + getArea(m.r));
                     m.eaten = true;
                 }
@@ -343,7 +343,7 @@ class Game {
             let nearbyViruses = shViruses.query(c);
             for (let v of nearbyViruses) {
                 if (virusesToKill.has(v.id)) continue;
-                if (Math.hypot(c.x - v.x, c.y - v.y) < c.r && c.r > v.r * 1.1) {
+                if ((c.x - v.x)*(c.x - v.x) + (c.y - v.y)*(c.y - v.y) < c.r * c.r && c.r > v.r * 1.1) {
                     virusesToKill.add(v.id);
                     c.r = getRadius(getArea(c.r) + getArea(v.r));
                     let myCells = this.cells.filter(cell => cell.ownerId === c.ownerId);
@@ -370,7 +370,33 @@ class Game {
         
         let targetViruses = this.mode === 'Fast Merge' ? config.MAX_VIRUSES * 3 : config.MAX_VIRUSES;
         while(this.viruses.length < targetViruses) {
-            this.viruses.push({ id: Math.random().toString(36), x: Math.random() * config.WORLD_WIDTH, y: Math.random() * config.WORLD_HEIGHT, r: 45, fed: 0 });
+            let safeX, safeY;
+            let attempts = 0;
+            let isSafe = false;
+            
+            while (!isSafe && attempts < 20) {
+                safeX = Math.random() * config.WORLD_WIDTH;
+                safeY = Math.random() * config.WORLD_HEIGHT;
+                isSafe = true;
+                
+                for (let c of this.cells) {
+                    let distSq = (c.x - safeX)*(c.x - safeX) + (c.y - safeY)*(c.y - safeY);
+                    let minD = c.r + 45 + 100; // 100 units of padding
+                    if (distSq < minD * minD) {
+                        isSafe = false;
+                        break;
+                    }
+                }
+                attempts++;
+            }
+            
+            if (isSafe) {
+                this.viruses.push({ id: Math.random().toString(36), x: safeX, y: safeY, r: 45, fed: 0 });
+            } else {
+                // Cannot find a safe spot after 20 attempts (map is likely too crowded)
+                // Stop trying this tick to prevent infinite loop
+                break;
+            }
         }
 
         for (let id in this.players) {
@@ -391,13 +417,72 @@ class Game {
         }
 
         let leaderboard = Object.values(this.players).sort((a, b) => b.score - a.score).slice(0, 10).map(p => ({ name: p.name, score: p.score, level: p.level }));
-        this.io.emit('update', { 
-            cells: this.cells, 
-            ejectedMass: this.ejectedMass, 
-            leaderboard, 
-            players: this.players, 
-            viruses: this.viruses
-        });
+
+        for (let id in this.players) {
+            let p = this.players[id];
+            if (p.isBot) continue;
+
+            let myCells = this.cells.filter(c => c.ownerId === id);
+            let cx = config.WORLD_WIDTH / 2;
+            let cy = config.WORLD_HEIGHT / 2;
+            let viewW = 1920;
+            let viewH = 1080;
+
+            if (myCells.length > 0) {
+                let totalMass = 0;
+                cx = 0; cy = 0;
+                for (let c of myCells) {
+                    cx += c.x; cy += c.y;
+                    totalMass += (c.r * c.r);
+                }
+                cx /= myCells.length; cy /= myCells.length;
+                let combinedR = Math.max(20, Math.sqrt(totalMass));
+                let targetZoom = Math.pow(40 / combinedR, 0.6);
+                targetZoom = Math.max(0.05, targetZoom);
+                viewW = 1920 / targetZoom;
+                viewH = 1080 / targetZoom;
+            } else {
+                let largest = this.cells.reduce((max, c) => (c.r > (max ? max.r : 0) ? c : max), null);
+                if (largest) {
+                    cx = largest.x; cy = largest.y;
+                    let targetZoom = Math.pow(25 / largest.r, 0.4);
+                    targetZoom = Math.max(0.05, targetZoom);
+                    viewW = 1920 / targetZoom;
+                    viewH = 1080 / targetZoom;
+                }
+            }
+
+            let viewR = Math.max(viewW, viewH) / 2 + 200; // 200 padding
+
+            let visibleCells = [];
+            for (let c of this.cells) {
+                if (c.x + c.r > cx - viewR && c.x - c.r < cx + viewR && c.y + c.r > cy - viewR && c.y - c.r < cy + viewR) {
+                    visibleCells.push(c);
+                }
+            }
+
+            let visibleEjected = [];
+            for (let m of this.ejectedMass) {
+                if (m.x + m.r > cx - viewR && m.x - m.r < cx + viewR && m.y + m.r > cy - viewR && m.y - m.r < cy + viewR) {
+                    visibleEjected.push(m);
+                }
+            }
+
+            let visibleViruses = [];
+            for (let v of this.viruses) {
+                if (v.x + v.r > cx - viewR && v.x - v.r < cx + viewR && v.y + v.r > cy - viewR && v.y - v.r < cy + viewR) {
+                    visibleViruses.push(v);
+                }
+            }
+
+            this.io.to(id).emit('update', { 
+                cells: visibleCells, 
+                ejectedMass: visibleEjected, 
+                leaderboard, 
+                players: this.players, 
+                viruses: visibleViruses
+            });
+        }
     }
 }
 module.exports = Game;
